@@ -84,4 +84,4 @@ class BasicLSTMCellWithRec(RNNCell):
       new_state = LSTMStateTuple(new_c, new_h)
     else:
       new_state = array_ops.concat([new_c, new_h], 1)
-    return new_h, new_state
+    return new_h, (new_state, i,)

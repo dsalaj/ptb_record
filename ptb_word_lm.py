@@ -133,7 +133,7 @@ class PTBModel(object):
     if is_training and config.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, config.keep_prob)
 
-    output, state = self._build_rnn_graph(inputs, config, is_training)
+    output, state, o_inputs = self._build_rnn_graph(inputs, config, is_training)
 
     softmax_w = tf.get_variable(
         "softmax_w", [size, vocab_size], dtype=data_type())
@@ -153,6 +153,7 @@ class PTBModel(object):
     # Update the cost
     self._cost = tf.reduce_sum(loss)
     self._final_state = state
+    self._o_inputs = o_inputs
 
     if not is_training:
       return
@@ -235,13 +236,16 @@ class PTBModel(object):
     # outputs, state = tf.contrib.rnn.static_rnn(cell, inputs,
     #                            initial_state=self._initial_state)
     outputs = []
+    o_inputs = []
     with tf.variable_scope("RNN"):
       for time_step in range(self.num_steps):
         if time_step > 0: tf.get_variable_scope().reuse_variables()
         (cell_output, state) = cell(inputs[:, time_step, :], state)
-        outputs.append(cell_output)
+        outputs.append(cell_output[0])
+        # o_inputs.append(cell_output[1])
     output = tf.reshape(tf.concat(outputs, 1), [-1, config.hidden_size])
-    return output, state
+    # o_inputs = tf.reshape(tf.concat(o_inputs, 1), [-1, config.hidden_size])
+    return output, state[0], state[1]
 
   def assign_lr(self, session, lr_value):
     session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
@@ -299,6 +303,10 @@ class PTBModel(object):
   @property
   def final_state(self):
     return self._final_state
+
+  @property
+  def o_inputs(self):
+    return self._o_inputs
 
   @property
   def lr(self):
@@ -393,6 +401,7 @@ def run_epoch(session, model, eval_op=None, verbose=False):
   state = session.run(model.initial_state)
 
   fetches = {
+      "o_inputs": model.o_inputs,
       "cost": model.cost,
       "final_state": model.final_state,
   }
@@ -407,6 +416,7 @@ def run_epoch(session, model, eval_op=None, verbose=False):
 
     vals = session.run(fetches, feed_dict)
     cost = vals["cost"]
+    o_in = vals["o_inputs"]
     state = vals["final_state"]
 
     costs += cost
@@ -417,6 +427,7 @@ def run_epoch(session, model, eval_op=None, verbose=False):
             (step * 1.0 / model.input.epoch_size, np.exp(costs / iters),
              iters * model.input.batch_size * max(1, FLAGS.num_gpus) /
              (time.time() - start_time)))
+      print(o_in)
 
   return np.exp(costs / iters)
 
