@@ -1,6 +1,10 @@
-from tf.contrib.rnn import RNNCell
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.rnn_cell_impl import LSTMStateTuple, _linear, RNNCell
+from tensorflow.python.platform import tf_logging as logging
 
-class BasicLSTMCell(RNNCell):
+
+class BasicLSTMCellWithRec(RNNCell):
   """Basic LSTM recurrent network cell.
   The implementation is based on: http://arxiv.org/abs/1409.2329.
   We add forget_bias (default: 1) to the biases of the forget gate in order to
@@ -29,7 +33,7 @@ class BasicLSTMCell(RNNCell):
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMCell instead.
     """
-    super(BasicLSTMCell, self).__init__(_reuse=reuse)
+    super(BasicLSTMCellWithRec, self).__init__(_reuse=reuse)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -73,7 +77,7 @@ class BasicLSTMCell(RNNCell):
     i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
 
     new_c = (
-        c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
+      c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
     new_h = self._activation(new_c) * sigmoid(o)
 
     if self._state_is_tuple:
