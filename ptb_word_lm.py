@@ -69,7 +69,7 @@ import util
 
 from tensorflow.python.client import device_lib
 
-from rec_lstm_cell import BasicLSTMCellWithRec
+from rec_lstm_cell import BasicLSTMCellWithRec, static_rnn_rec, MultiRNNCellRec
 
 flags = tf.flags
 logging = tf.logging
@@ -133,8 +133,10 @@ class PTBModel(object):
     if is_training and config.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, config.keep_prob)
 
-    output, state, o_inputs = self._build_rnn_graph(inputs, config, is_training)
-
+    output, state, gates = self._build_rnn_graph(inputs, config, is_training)
+    gates = tf.stack(gates, axis=0)
+    (i, j, f, o, c, new_c) = tf.unstack(gates, axis=1)
+    gates = tf.stack([i, j, f, o, c, new_c], axis=0)
     softmax_w = tf.get_variable(
         "softmax_w", [size, vocab_size], dtype=data_type())
     softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type())
@@ -153,7 +155,7 @@ class PTBModel(object):
     # Update the cost
     self._cost = tf.reduce_sum(loss)
     self._final_state = state
-    self._o_inputs = o_inputs
+    self._gates = gates
 
     if not is_training:
       return
@@ -204,11 +206,12 @@ class PTBModel(object):
   def _get_lstm_cell(self, config, is_training):
     if config.rnn_mode == BASIC:
       return BasicLSTMCellWithRec(
+      # return tf.contrib.rnn.BasicLSTMCell(
           config.hidden_size, forget_bias=0.0, state_is_tuple=True,
           reuse=not is_training)
-    if config.rnn_mode == BLOCK:
-      return tf.contrib.rnn.LSTMBlockCell(
-          config.hidden_size, forget_bias=0.0)
+    # if config.rnn_mode == BLOCK:
+    #   return tf.contrib.rnn.LSTMBlockCell(
+    #       config.hidden_size, forget_bias=0.0)
     raise ValueError("rnn_mode %s not supported" % config.rnn_mode)
 
   def _build_rnn_graph_lstm(self, inputs, config, is_training):
@@ -221,31 +224,32 @@ class PTBModel(object):
       cell = tf.contrib.rnn.DropoutWrapper(
           cell, output_keep_prob=config.keep_prob)
 
-    cell = tf.contrib.rnn.MultiRNNCell(
-        [cell for _ in range(config.num_layers)], state_is_tuple=True)
+    # cell = tf.contrib.rnn.MultiRNNCell([cell for _ in range(config.num_layers)], state_is_tuple=True)
+    cell = MultiRNNCellRec([cell for _ in range(config.num_layers)], state_is_tuple=True)
 
     self._initial_state = cell.zero_state(config.batch_size, data_type())
-    state = self._initial_state
+    # state = self._initial_state
     # Simplified version of tensorflow_models/tutorials/rnn/rnn.py's rnn().
     # This builds an unrolled LSTM for tutorial purposes only.
     # In general, use the rnn() or state_saving_rnn() from rnn.py.
     #
     # The alternative version of the code below is:
-    #
-    # inputs = tf.unstack(inputs, num=num_steps, axis=1)
-    # outputs, state = tf.contrib.rnn.static_rnn(cell, inputs,
-    #                            initial_state=self._initial_state)
-    outputs = []
-    o_inputs = []
-    with tf.variable_scope("RNN"):
-      for time_step in range(self.num_steps):
-        if time_step > 0: tf.get_variable_scope().reuse_variables()
-        (cell_output, state) = cell(inputs[:, time_step, :], state)
-        outputs.append(cell_output[0])
-        # o_inputs.append(cell_output[1])
+
+    inputs = tf.unstack(inputs, num=self.num_steps, axis=1)
+    # outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, initial_state=self._initial_state)
+    outputs, state, gates = static_rnn_rec(cell, inputs, initial_state=self._initial_state)
+
+    # outputs = []
+    # # o_inputs = []
+    # with tf.variable_scope("RNN"):
+    #   for time_step in range(self.num_steps):
+    #     if time_step > 0: tf.get_variable_scope().reuse_variables()
+    #     (cell_output, state) = cell(inputs[:, time_step, :], state)
+    #     outputs.append(cell_output)
+    #     # o_inputs.append(cell_output[1])
     output = tf.reshape(tf.concat(outputs, 1), [-1, config.hidden_size])
-    # o_inputs = tf.reshape(tf.concat(o_inputs, 1), [-1, config.hidden_size])
-    return output, state[0], state[1]
+    # # o_inputs = tf.reshape(tf.concat(o_inputs, 1), [-1, config.hidden_size])
+    return output, state, gates
 
   def assign_lr(self, session, lr_value):
     session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
@@ -253,7 +257,8 @@ class PTBModel(object):
   def export_ops(self, name):
     """Exports ops to collections."""
     self._name = name
-    ops = {util.with_prefix(self._name, "cost"): self._cost}
+    ops = {util.with_prefix(self._name, "cost"): self._cost,
+           util.with_prefix(self._name, "gates"): self._gates}
     if self._is_training:
       ops.update(lr=self._lr, new_lr=self._new_lr, lr_update=self._lr_update)
       if self._rnn_params:
@@ -282,6 +287,7 @@ class PTBModel(object):
             base_variable_scope="Model/RNN")
         tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
     self._cost = tf.get_collection_ref(util.with_prefix(self._name, "cost"))[0]
+    self._gates = tf.get_collection_ref(util.with_prefix(self._name, "gates"))[0]
     num_replicas = FLAGS.num_gpus if self._name == "Train" else 1
     self._initial_state = util.import_state_tuples(
         self._initial_state, self._initial_state_name, num_replicas)
@@ -305,8 +311,8 @@ class PTBModel(object):
     return self._final_state
 
   @property
-  def o_inputs(self):
-    return self._o_inputs
+  def gates(self):
+    return self._gates
 
   @property
   def lr(self):
@@ -401,7 +407,7 @@ def run_epoch(session, model, eval_op=None, verbose=False):
   state = session.run(model.initial_state)
 
   fetches = {
-      "o_inputs": model.o_inputs,
+      "gates": model.gates,
       "cost": model.cost,
       "final_state": model.final_state,
   }
@@ -416,7 +422,8 @@ def run_epoch(session, model, eval_op=None, verbose=False):
 
     vals = session.run(fetches, feed_dict)
     cost = vals["cost"]
-    o_in = vals["o_inputs"]
+    gates = vals["gates"]
+    i, j, f, o, c, new_c = gates[:]
     state = vals["final_state"]
 
     costs += cost
@@ -427,7 +434,8 @@ def run_epoch(session, model, eval_op=None, verbose=False):
             (step * 1.0 / model.input.epoch_size, np.exp(costs / iters),
              iters * model.input.batch_size * max(1, FLAGS.num_gpus) /
              (time.time() - start_time)))
-      print(o_in)
+      print(type(i))
+      print(i.shape)
 
   return np.exp(costs / iters)
 

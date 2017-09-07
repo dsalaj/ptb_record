@@ -1,7 +1,7 @@
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.array_ops import stack
-from tensorflow.python.ops.rnn_cell_impl import LSTMStateTuple, _linear, RNNCell
+from tensorflow.python.ops.rnn_cell_impl import LSTMStateTuple, _linear, RNNCell, MultiRNNCell
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.ops import rnn
 from tensorflow.python.util import nest
@@ -93,6 +93,37 @@ class BasicLSTMCellWithRec(RNNCell):
     else:
       new_state = array_ops.concat([new_c, new_h], 1)
     return new_h, new_state, gates
+
+
+class MultiRNNCellRec(MultiRNNCell):
+  """RNN cell composed sequentially of multiple simple cells with gates recording."""
+
+  def call(self, inputs, state):
+    """Run this multi-layer cell on inputs, starting from state."""
+    cur_state_pos = 0
+    cur_inp = inputs
+    new_states = []
+    # new_gates = []
+    for i, cell in enumerate(self._cells):
+      with vs.variable_scope("cell_%d" % i):
+        if self._state_is_tuple:
+          if not nest.is_sequence(state):
+            raise ValueError(
+                "Expected state to be a tuple of length %d, but received: %s" %
+                (len(self.state_size), state))
+          cur_state = state[i]
+        else:
+          cur_state = array_ops.slice(state, [0, cur_state_pos],
+                                      [-1, cell.state_size])
+          cur_state_pos += cell.state_size
+        cur_inp, new_state, gates = cell(cur_inp, cur_state)
+        new_states.append(new_state)
+        # new_gates.append(gates)
+
+    new_states = (tuple(new_states) if self._state_is_tuple else
+                  array_ops.concat(new_states, 1))
+
+    return cur_inp, new_states, gates
 
 
 def static_rnn_rec(cell,
