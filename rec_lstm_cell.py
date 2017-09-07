@@ -1,5 +1,6 @@
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.array_ops import stack
 from tensorflow.python.ops.rnn_cell_impl import LSTMStateTuple, _linear, RNNCell
 from tensorflow.python.platform import tf_logging as logging
 
@@ -80,8 +81,10 @@ class BasicLSTMCellWithRec(RNNCell):
       c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
     new_h = self._activation(new_c) * sigmoid(o)
 
+    gates = stack([i, j, f, o, c, new_c], axis=0)
+
     if self._state_is_tuple:
       new_state = LSTMStateTuple(new_c, new_h)
     else:
       new_state = array_ops.concat([new_c, new_h], 1)
-    return new_h, new_state
+    return new_h, new_state, gates
