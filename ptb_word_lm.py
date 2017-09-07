@@ -59,6 +59,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import time
 
 import numpy as np
@@ -340,7 +341,7 @@ class SmallConfig(object):
   num_steps = 20
   hidden_size = 200
   max_epoch = 4
-  max_max_epoch = 13
+  max_max_epoch = 1
   keep_prob = 1.0
   lr_decay = 0.5
   batch_size = 20
@@ -407,13 +408,15 @@ def run_epoch(session, model, eval_op=None, verbose=False):
   state = session.run(model.initial_state)
 
   fetches = {
-      "gates": model.gates,
       "cost": model.cost,
       "final_state": model.final_state,
   }
   if eval_op is not None:
     fetches["eval_op"] = eval_op
+  else:
+    fetches["gates"] = model.gates
 
+  gates_data_step = {}
   for step in range(model.input.epoch_size):
     feed_dict = {}
     for i, (c, h) in enumerate(model.initial_state):
@@ -422,8 +425,17 @@ def run_epoch(session, model, eval_op=None, verbose=False):
 
     vals = session.run(fetches, feed_dict)
     cost = vals["cost"]
-    gates = vals["gates"]
-    i, j, f, o, c, new_c = gates[:]
+    if eval_op is None:
+      gates = vals["gates"]
+      i, j, f, o, c, new_c = gates[:]
+      gates_data_step["i"] = i.tolist()
+      gates_data_step["j"] = j.tolist()
+      gates_data_step["f"] = f.tolist()
+      gates_data_step["o"] = o.tolist()
+      gates_data_step["c"] = c.tolist()
+      gates_data_step["new_c"] = new_c.tolist()
+      with open('gates_step_'+str(step)+'.json', 'w') as fp:
+        json.dump(gates_data_step, fp)
     state = vals["final_state"]
 
     costs += cost
@@ -434,8 +446,8 @@ def run_epoch(session, model, eval_op=None, verbose=False):
             (step * 1.0 / model.input.epoch_size, np.exp(costs / iters),
              iters * model.input.batch_size * max(1, FLAGS.num_gpus) /
              (time.time() - start_time)))
-      print(type(i))
-      print(i.shape)
+      # print(type(i))
+      # print(i.shape)
 
   return np.exp(costs / iters)
 
