@@ -59,7 +59,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import time
 
 import numpy as np
@@ -400,7 +399,7 @@ class TestConfig(object):
   rnn_mode = BLOCK
 
 
-def run_epoch(session, model, eval_op=None, verbose=False):
+def run_epoch(session, model, eval_op=None, verbose=False, last=False, name=None):
   """Runs the model on the given data."""
   start_time = time.time()
   costs = 0.0
@@ -413,9 +412,11 @@ def run_epoch(session, model, eval_op=None, verbose=False):
   }
   if eval_op is not None:
     fetches["eval_op"] = eval_op
-  else:
+  if last is True:
+    print("Last epoch of " + name)
     fetches["gates"] = model.gates
 
+  gates_data = []
   gates_data_step = {}
   for step in range(model.input.epoch_size):
     feed_dict = {}
@@ -425,17 +426,18 @@ def run_epoch(session, model, eval_op=None, verbose=False):
 
     vals = session.run(fetches, feed_dict)
     cost = vals["cost"]
-    if eval_op is None:
+    # Record on last epoch
+    if last is True:
       gates = vals["gates"]
       i, j, f, o, c, new_c = gates[:]
-      gates_data_step["i"] = i.tolist()
-      gates_data_step["j"] = j.tolist()
-      gates_data_step["f"] = f.tolist()
-      gates_data_step["o"] = o.tolist()
-      gates_data_step["c"] = c.tolist()
-      gates_data_step["new_c"] = new_c.tolist()
-      with open('gates_step_'+str(step)+'.json', 'w') as fp:
-        json.dump(gates_data_step, fp)
+      gates_data_step["i"] = i
+      gates_data_step["j"] = j
+      gates_data_step["f"] = f
+      gates_data_step["o"] = o
+      gates_data_step["c"] = c
+      gates_data_step["new_c"] = new_c
+      gates_data.append(gates_data_step)
+
     state = vals["final_state"]
 
     costs += cost
@@ -446,8 +448,9 @@ def run_epoch(session, model, eval_op=None, verbose=False):
             (step * 1.0 / model.input.epoch_size, np.exp(costs / iters),
              iters * model.input.batch_size * max(1, FLAGS.num_gpus) /
              (time.time() - start_time)))
-      # print(type(i))
-      # print(i.shape)
+
+  if last is True:
+    np.save('gates_' + str(name) + '.npy', gates_data)
 
   return np.exp(costs / iters)
 
@@ -541,12 +544,14 @@ def main(_):
 
         print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr)))
         train_perplexity = run_epoch(session, m, eval_op=m.train_op,
-                                     verbose=True)
+                                     verbose=True, last=(i == (config.max_max_epoch - 1)),
+                                     name='train')
         print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
-        valid_perplexity = run_epoch(session, mvalid)
+        valid_perplexity = run_epoch(session, mvalid, last=(i == (config.max_max_epoch - 1)),
+                                     name='valid')
         print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, valid_perplexity))
 
-      test_perplexity = run_epoch(session, mtest)
+      test_perplexity = run_epoch(session, mtest, last=True, name='test')
       print("Test Perplexity: %.3f" % test_perplexity)
 
       if FLAGS.save_path:
