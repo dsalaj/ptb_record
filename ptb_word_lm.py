@@ -429,13 +429,13 @@ def run_epoch(session, model, eval_op=None, verbose=False, last=False, name=None
     # Record on last epoch
     if last is True:
       gates = vals["gates"]
-      i, j, f, o, c, new_c = gates[:]
+      i, j, f, o, c, h = gates[:]
       gates_data_step["i"] = i
       gates_data_step["j"] = j
       gates_data_step["f"] = f
       gates_data_step["o"] = o
       gates_data_step["c"] = c
-      gates_data_step["new_c"] = new_c
+      gates_data_step["h"] = h
       gates_data.append(gates_data_step)
 
     state = vals["final_state"]
@@ -450,7 +450,7 @@ def run_epoch(session, model, eval_op=None, verbose=False, last=False, name=None
              (time.time() - start_time)))
 
   if last is True:
-    np.save('gates_' + str(name) + '.npy', gates_data)
+    np.save('h_gates_' + str(name) + '.npy', gates_data)
 
   return np.exp(costs / iters)
 

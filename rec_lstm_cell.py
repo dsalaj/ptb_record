@@ -86,7 +86,8 @@ class BasicLSTMCellWithRec(RNNCell):
       c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
     new_h = self._activation(new_c) * sigmoid(o)
 
-    gates = stack([i, j, f, o, c, new_c], axis=0)
+    gates = stack([sigmoid(i), sigmoid(j), sigmoid(f + self._forget_bias),
+                   sigmoid(o), c, new_h], axis=0)
 
     if self._state_is_tuple:
       new_state = LSTMStateTuple(new_c, new_h)
