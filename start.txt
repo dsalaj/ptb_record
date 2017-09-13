@@ -1,0 +1,1 @@
+python3 ptb_word_lm.py --data_path=simple-examples/data --num_gpus=0 --rnn_mode=basic
