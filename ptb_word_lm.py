@@ -135,8 +135,8 @@ class PTBModel(object):
 
     output, state, gates = self._build_rnn_graph(inputs, config, is_training)
     gates = tf.stack(gates, axis=0)
-    (i, j, f, o, c, new_c) = tf.unstack(gates, axis=1)
-    gates = tf.stack([i, j, f, o, c, new_c], axis=0)
+    (i, j, f, o, c, new_h) = tf.unstack(gates, axis=1)
+    gates = tf.stack([i, j, f, o, c, new_h], axis=0)
     softmax_w = tf.get_variable(
         "softmax_w", [size, vocab_size], dtype=data_type())
     softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type())
@@ -417,7 +417,6 @@ def run_epoch(session, model, eval_op=None, verbose=False, last=False, name=None
     fetches["gates"] = model.gates
 
   gates_data = []
-  gates_data_step = {}
   for step in range(model.input.epoch_size):
     feed_dict = {}
     for i, (c, h) in enumerate(model.initial_state):
@@ -430,13 +429,7 @@ def run_epoch(session, model, eval_op=None, verbose=False, last=False, name=None
     if last is True:
       gates = vals["gates"]
       i, j, f, o, c, h = gates[:]
-      gates_data_step["i"] = i
-      gates_data_step["j"] = j
-      gates_data_step["f"] = f
-      gates_data_step["o"] = o
-      gates_data_step["c"] = c
-      gates_data_step["h"] = h
-      gates_data.append(gates_data_step)
+      gates_data.append({'i': i, 'j': j, 'f': f, 'o': o, 'c': c, 'h': h})
 
     state = vals["final_state"]
 
