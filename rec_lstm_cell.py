@@ -104,7 +104,7 @@ class MultiRNNCellRec(MultiRNNCell):
     cur_state_pos = 0
     cur_inp = inputs
     new_states = []
-    # new_gates = []
+    new_gates = []
     for i, cell in enumerate(self._cells):
       with vs.variable_scope("cell_%d" % i):
         if self._state_is_tuple:
@@ -119,12 +119,12 @@ class MultiRNNCellRec(MultiRNNCell):
           cur_state_pos += cell.state_size
         cur_inp, new_state, gates = cell(cur_inp, cur_state)
         new_states.append(new_state)
-        # new_gates.append(gates)
+        new_gates.append(gates)
 
     new_states = (tuple(new_states) if self._state_is_tuple else
                   array_ops.concat(new_states, 1))
-
-    return cur_inp, new_states, gates
+    new_gates = array_ops.concat(new_gates, 2)
+    return cur_inp, new_states, new_gates
 
 
 def static_rnn_rec(cell,

@@ -238,7 +238,6 @@ class PTBModel(object):
     inputs = tf.unstack(inputs, num=self.num_steps, axis=1)
     # outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, initial_state=self._initial_state)
     outputs, state, gates = static_rnn_rec(cell, inputs, initial_state=self._initial_state)
-
     # outputs = []
     # # o_inputs = []
     # with tf.variable_scope("RNN"):
