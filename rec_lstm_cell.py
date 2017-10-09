@@ -1,5 +1,5 @@
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops, array_ops
+from tensorflow.python.ops.random_ops import random_uniform
 from tensorflow.python.ops.array_ops import stack
 from tensorflow.python.ops.rnn_cell_impl import LSTMStateTuple, _linear, RNNCell, MultiRNNCell
 from tensorflow.python.platform import tf_logging as logging
@@ -21,8 +21,8 @@ class BasicLSTMCellWithRec(RNNCell):
   that follows.
   """
 
-  def __init__(self, num_units, forget_bias=1.0,
-               state_is_tuple=True, activation=None, reuse=None):
+  def __init__(self, num_units, forget_bias=1.0, state_is_tuple=True,
+               activation=None, reuse=None, noise=None):
     """Initialize the basic LSTM cell.
     Args:
       num_units: int, The number of units in the LSTM cell.
@@ -47,6 +47,7 @@ class BasicLSTMCellWithRec(RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation or math_ops.tanh
+    self._noise = noise
 
   @property
   def state_size(self):
@@ -85,6 +86,9 @@ class BasicLSTMCellWithRec(RNNCell):
     new_c = (
       c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
     new_h = self._activation(new_c) * sigmoid(o)
+
+    if self._noise is not None:
+      new_h = new_h + random_uniform(new_h.get_shape(), minval=0, maxval=self._noise)
 
     gates = stack([sigmoid(i), sigmoid(j), sigmoid(f + self._forget_bias),
                    sigmoid(o), c, new_h], axis=0)

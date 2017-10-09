@@ -91,6 +91,8 @@ flags.DEFINE_string("rnn_mode", None,
                     "The low level implementation of lstm cell: one of CUDNN, "
                     "BASIC, and BLOCK, representing cudnn_lstm, basic_lstm, "
                     "and lstm_block_cell classes.")
+flags.DEFINE_float("noise", None,
+                   "Max value of uniform noise to be applied to output of BasicLSTM")
 FLAGS = flags.FLAGS
 BASIC = "basic"
 CUDNN = "cudnn"
@@ -208,7 +210,7 @@ class PTBModel(object):
       return BasicLSTMCellWithRec(
       # return tf.contrib.rnn.BasicLSTMCell(
           config.hidden_size, forget_bias=0.0, state_is_tuple=True,
-          reuse=not is_training)
+          reuse=not is_training, noise=FLAGS.noise)
     # if config.rnn_mode == BLOCK:
     #   return tf.contrib.rnn.LSTMBlockCell(
     #       config.hidden_size, forget_bias=0.0)
