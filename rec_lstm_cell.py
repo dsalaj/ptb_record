@@ -91,7 +91,7 @@ class BasicLSTMCellWithRec(RNNCell):
       new_h = new_h + random_uniform(new_h.get_shape(), minval=0, maxval=self._noise)
 
     gates = stack([sigmoid(i), sigmoid(j), sigmoid(f + self._forget_bias),
-                   sigmoid(o), c, new_h], axis=0)
+                   sigmoid(o), c, sigmoid(new_h)], axis=0)
 
     if self._state_is_tuple:
       new_state = LSTMStateTuple(new_c, new_h)
